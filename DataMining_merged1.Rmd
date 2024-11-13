@@ -1,0 +1,176 @@
+---
+title: "DataMining_Merged"
+author: "Ramya Gopu"
+date: "2024-11-12"
+output: html_document
+---
+```{r}
+# Load the required libraries
+library(dplyr)
+# Load necessary libraries
+
+library(tidyr)
+library(stringr)
+```
+
+```{r}
+library(ggplot2)
+
+```
+
+
+```{r}
+install.packages("bigmemory")
+```
+
+```{r}
+movies_merged <- read.csv("C:\\Users\\ramya\\Downloads\\DM_MOVIERECOMMENDATION\\movie_ratings_data.csv")
+```
+
+```{r}
+head(movies_merged)
+```
+```{r}
+# Check structure and summary
+str(movies_merged)
+summary(movies_merged)
+```
+
+
+```{r}
+# Check for missing values
+colSums(is.na(movies_merged))
+```
+```{r}
+# Filter rows where any of userId, rating, or timestamp is NA
+missing_data <- movies_merged %>%
+  filter(is.na(userId) | is.na(rating) | is.na(timestamp))
+
+# Check if these rows have NA for all three columns (userId, rating, and timestamp)
+missing_data_check <- missing_data %>%
+  filter(is.na(userId) & is.na(rating) & is.na(timestamp))
+
+# Display the count of rows with NA in all three columns
+num_rows_all_na <- nrow(missing_data_check)
+print(paste("Number of rows with missing values in userId, rating, and timestamp:", num_rows_all_na))
+
+# Check if it matches the expected 534
+if (num_rows_all_na == 534) {
+  print("Yes, all 534 missing values belong to the same rows for userId, rating, and timestamp.")
+} else {
+  print("No, the 534 missing values do not all belong to the same rows.")
+}
+
+```
+
+
+```{r}
+# Subset data where userId, rating, or timestamp are NA
+missing_data <- movies_merged[is.na(movies_merged$userId) | is.na(movies_merged$rating) | is.na(movies_merged$timestamp), ]
+
+# Get unique movies and genres with missing values
+unique_movies <- unique(missing_data$title)
+unique_genres <- unique(missing_data$genres)
+
+# Display the results
+print("Movies with missing values:")
+print(unique_movies)
+
+print("Genres with missing values:")
+print(unique_genres)
+
+```
+
+```{r}
+# Count unique movies for each userId
+user_movie_counts <- movies_merged %>%
+  group_by(userId) %>%
+  summarise(movie_count = n_distinct(movieId))
+
+# Display the result
+print(user_movie_counts)
+
+```
+`
+```{r}
+# Count unique genre combinations across the dataset without separating rows
+genre_combination_counts <- movies_merged %>%
+  group_by(genres) %>%
+  summarise(genre_count = n()) %>%
+  arrange(desc(genre_count))
+
+# Display the result
+print(genre_combination_counts)
+
+
+```
+```{r}
+# Calculate genre weights (e.g., inverse of genre count)
+genre_weights <- genre_combination_counts %>%
+  mutate(weight = 1 / genre_count)
+
+# Join weights back with movies_merged dataset
+weighted_data <- movies_merged %>%
+  left_join(genre_weights, by = "genres")
+
+```
+
+```{r}
+# Calculate effective influence for each genre by multiplying count by weight
+weighted_summary <- weighted_summary %>%
+  mutate(effective_influence = count * weight)
+
+# Display the updated summary
+print(weighted_summary)
+
+# Check summary statistics for effective influence to assess balance
+summary(weighted_summary$effective_influence)
+
+```
+```{r}
+
+# Plot effective influence for each genre to see balance
+ggplot(weighted_summary, aes(x = reorder(genres, -effective_influence), y = effective_influence)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Effective Influence of Each Genre After Weighting", x = "Genres", y = "Effective Influence")
+
+```
+
+
+```{r}
+# Summarize to see unique genres and their corresponding weights
+weighted_summary <- weighted_data %>%
+  group_by(genres) %>%
+  summarise(weight = first(weight), count = n()) %>%
+  arrange(desc(weight))
+
+print(weighted_summary)
+
+```
+
+
+```{r}
+# 1. Create a list of all genres without expanding rows
+# Use str_split to create lists of genres for each movie
+all_genres <- str_split(movies_merged$genres, "\\|")
+
+# 2. Unlist and create a frequency table of genres
+# Unlist and count occurrences of each genre
+genre_counts <- table(unlist(all_genres))
+
+# Convert the table to a data frame for plotting
+genre_counts_df <- as.data.frame(genre_counts) %>%
+  rename(genre = Var1, count = Freq) %>%
+  arrange(desc(count))
+
+# 3. Plot the bar chart
+ggplot(genre_counts_df, aes(x = reorder(genre, -count), y = count)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  theme_minimal() +
+  labs(title = "Count of Each Genre in MovieLens Dataset",
+       x = "Genre",
+       y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
