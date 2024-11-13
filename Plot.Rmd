@@ -1,0 +1,103 @@
+```{r}
+install.packages("tidytext")
+install.packages("dplyr")
+install.packages("ggplot2")
+install.packages("wordcloud2")
+```
+
+```{r}
+library(dplyr)
+library(tidytext)
+library(ggplot2)
+
+```
+
+
+```{r}
+# Load the dataset (replace "your_file.csv" with the path to your CSV file)
+df <- read.csv("movie_ratings_data.csv")
+
+```
+
+
+
+```{r}
+# Assuming 'genres' is a single string with genres separated by '|' (pipe) character
+df <- df %>%
+  mutate(genres = gsub("sci-fi", "sci_fi", genres, ignore.case = TRUE)) %>%
+  mutate(genres = gsub("\\|", " ", genres)) # Replace '|' with spaces for tokenization
+
+# Process Unigrams
+unigrams <- df %>%
+  unnest_tokens(unigram, genres, token = "words") %>%
+  count(unigram, sort = TRUE) %>%
+  mutate(unigram = gsub("sci_fi", "sci-fi", unigram)) # Convert "sci_fi" back to "sci-fi"
+
+
+# Plot Unigrams
+ggplot(unigrams %>% top_n(10), aes(x = reorder(unigram, n), y = n)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  labs(title = "Top Unigrams in Genres", x = "Unigram", y = "Count") +
+  theme_minimal()
+
+```
+
+##Purpose: Unigrams show the frequency of individual genres. This analysis highlights the most popular genres in your dataset without considering any genre combinations.
+
+##Interpretation:
+#->Common Genres: You might see that genres like "comedy," "drama," and "action" appear frequently as unigrams, indicating they are the most popular or frequently assigned genres.
+#->Unigrams give a basic view of genre popularity, showing which genres are standalone or primary descriptors.
+
+```{r}
+# Process Bigrams
+bigrams <- df %>%
+  unnest_tokens(bigram, genres, token = "ngrams", n = 2) %>%
+  count(bigram, sort = TRUE) %>%
+  mutate(bigram = gsub("sci_fi", "sci-fi", bigram)) # Convert "sci_fi" back to "sci-fi"
+
+# Plot Bigrams
+ggplot(bigrams %>% top_n(10), aes(x = reorder(bigram, n), y = n)) +
+  geom_bar(stat = "identity", fill = "salmon") +
+  coord_flip() +
+  labs(title = "Top Bigrams in Genres", x = "Bigram", y = "Count") +
+  theme_minimal()
+
+
+```
+
+##Bigrams, by definition, require two consecutive words. For example, if the genre is "action comedy,"it can form a bigram "action-comedy."However, if a movie has only one genre (e.g., "comedy"), there aren’t two terms to form a bigram. Since unnest_tokens() attempts to create bigrams for every row but finds only one term, it results in an NA value for that row.
+#Interpretation:
+#Popular Genre Pairings: You may find pairs like "action comedy," "romantic drama," or "sci-fi thriller," revealing that certain genres tend to co-occur.
+#->Bigrams give a more nuanced view, showing how genres are often combined to create a movie’s category. This is useful for understanding which genres typically work well together, such as "comedy" with "drama" or "action" with "thriller."
+
+
+
+```{r}
+
+# Process Trigrams
+trigrams <- df %>%
+  unnest_tokens(trigram, genres, token = "ngrams", n = 3) %>%
+  count(trigram, sort = TRUE) %>%
+  mutate(trigram = gsub("sci_fi", "sci-fi", trigram)) # Convert "sci_fi" back to "sci-fi"
+
+
+# Plot Trigrams
+ggplot(trigrams %>% top_n(10), aes(x = reorder(trigram, n), y = n)) +
+  geom_bar(stat = "identity", fill = "lightgreen") +
+  coord_flip() +
+  labs(title = "Top Trigrams in Genres", x = "Trigram", y = "Count") +
+  theme_minimal()
+
+```
+#Purpose: Trigrams examine the frequency of three-genre combinations. This analysis is useful for identifying more complex genre groupings, often capturing niche or hybrid genre patterns.
+#Interpretation:
+#Common Trigrams: Combinations like "adventure animation children" or "comedy drama romance" may appear, showing how certain genres are grouped to target specific audiences (e.g., family-friendly, romantic-comedy).
+#Trigrams give a comprehensive look at how genres can be combined in more intricate ways, creating detailed categories that reflect a broader or more targeted appeal. This helps to identify specific genre patterns that might appeal to select groups of viewers.
+
+
+
+
+
+
+
