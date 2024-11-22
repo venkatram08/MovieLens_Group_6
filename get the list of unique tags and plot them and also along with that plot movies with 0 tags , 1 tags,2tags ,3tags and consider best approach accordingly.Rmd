@@ -1,12 +1,8 @@
 ---
 title: "R Notebook"
 output: html_notebook
+author: sheethal 
 ---
-
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
-
 ```{r}
 install.packages("dplyr")
 install.packages("ggplot2")
@@ -108,7 +104,7 @@ ggplot(tag_count_summary, aes(x = tag_count, y = movie_count)) +
 
 library(dplyr)
 library(tidyr)
-
+## TO CHECK IF MY ASSUMPTIONS ARE OK 
 # Count the number of times each user has used each tag
 user_tag_counts <- tags %>%
   group_by(userId, tag) %>%
@@ -167,20 +163,6 @@ rownames(movie_similarity_df) <- filtered_movie_tag_matrix$movieId
 # Preview the similarity matrix
 head(movie_similarity_df[, 1:5])
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 ```{r}
 # Function to get top N similar movies based on cosine similarity
@@ -204,89 +186,11 @@ get_similar_movies <- function(movie_id, similarity_matrix, top_n = 5) {
   return(similar_movies)
 }
 
-# Example: Get top 5 similar movies for a given movieId (e.g., movieId = "1")
-top_similar_movies <- get_similar_movies(movie_id = "1", similarity_matrix = movie_similarity_df, top_n = 5)
-print(top_similar_movies)
-
 
 ```
 ```{r}
-# Function to create a user profile vector based on tag usage
-create_user_profile <- function(user_id, user_tag_matrix) {
-  # Extract the tag usage for the specific user
-  user_profile <- user_tag_matrix[user_tag_matrix$userId == user_id, -1]
-  
-  # Aggregate the tag frequencies across all tagged movies by the user
-  user_profile_vector <- colSums(user_profile)
-  
-  # Normalize the profile vector (optional)
-  user_profile_vector <- user_profile_vector / sum(user_profile_vector)
-  
-  return(user_profile_vector)
-}
 
-# Example: Create a user profile for userId = 65
-user_profile <- create_user_profile(user_id = 65, user_tag_matrix = user_tag_matrix)
-print(user_profile)
-
-```
-```{r}
- # Function to recommend movies based on user profile
-recommend_movies <- function(user_profile, movie_tag_matrix, top_n = 10) {
-  # Ensure movie_tag_matrix is a data frame
-  movie_tag_matrix <- as.data.frame(movie_tag_matrix)
   
-  # Select only tag columns (excluding movieId column
-  tag_columns <- colnames(movie_tag_matrix)[-1]
-  
-  # Ensure user profile has the same order and length as the movie tag matrix
-  user_profile <- user_profile[tag_columns]
-  
-  # Check if dimensions match between user profile and tag columns
-  if (length(user_profile) != length(tag_columns)) {
-    stop("Mismatch in dimensions between user profile and movie tag matrix.")
-  }
-  
-  # Calculate similarity scores using matrix multiplication
-  movie_scores <- as.numeric(as.matrix(movie_tag_matrix[, tag_columns]) %*% user_profile)
-  
-  # Check if movie_scores is empty or contains only zeros or NAs
-  if (all(is.na(movie_scores)) || sum(movie_scores == 10) == length(movie_scores)) {
-    cat("Warning: No valid movie scores computed. All scores are NA or zero.\n")
-    return(data.frame(movieId = numeric(10), score = numeric(10)))  # Return empty if no scores
-  }
-  
-  # Get movieId column (assuming it is the first column in the matrix)
-  movie_ids <- movie_tag_matrix$movieId
-  
-  # Assign movie IDs to the scores
-  names(movie_scores) <- movie_ids
-  
-  # Sort movies based on scores and get top N recommendations
-  sorted_scores <- sort(movie_scores, decreasing = TRUE)
-  
-  # Handle the case where there are less than top_n valid movies
-  top_recommendations <- head(sorted_scores, top_n)
-  
-  # If no valid recommendations are found, return an empty data frame
-  if (length(top_recommendations) == 0) {
-    cat("Warning: No recommendations found.\n")
-    return(data.frame(movieId = numeric(0), score = numeric(0)))  # Return empty data frame
-  }
-  
-  # Create a data frame of recommendations
-  recommended_movies <- data.frame(movieId = as.numeric(names(top_recommendations)), score = top_recommendations)
-  
-  return(recommended_movies)
-}
-
-# Example usage:
-# Assuming `user_profile` is created using the function `create_user_profile`
-user_profile <- create_user_profile(user_id = 65, user_tag_matrix)
-recommendations <- recommend_movies(user_profile, filtered_movie_tag_matrix_numeric, top_n = 10)
-
-# Print the recommendations
-print(recommendations)
 
 
 
