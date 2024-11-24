@@ -1,0 +1,377 @@
+---
+title: "TestUI"
+output: pdf_document
+date: "2024-11-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+```{r}
+library(shiny)
+library(bslib) 
+library(shinythemes)
+library(dplyr)
+library(tidyr)
+library(recommenderlab)
+
+# Load Data
+movies <- read.csv("/Users/venkatvelinedi/Downloads/archive/movie.csv")
+ratings <- read.csv("/Users/venkatvelinedi/Downloads/archive/rating.csv")
+```
+
+```{r}
+print(dim(movies))
+head(movies)
+```
+```{r}
+print(dim(ratings))
+head(ratings)
+```
+```{r}
+ratings <- subset(ratings, select = -c(timestamp))
+```
+```{r}
+head(ratings)
+```
+
+```{r}
+# Preprocess Movies Data
+movies <- movies %>%
+    mutate(genres = strsplit(as.character(genres), "\\|"))  # Split genres into a list
+
+# Subset Data to Reduce Memory Usage
+# Use only the first 1000 users for collaborative filtering
+ratings_subset <- ratings %>% filter(userId <= 1000)
+
+# Step 2: Create Sparse Rating Matrix
+ratings_matrix <- as(ratings_subset %>% 
+                         select(userId, movieId, rating) %>% 
+                         spread(movieId, rating, fill = 0),  # Fill missing ratings with 0
+                     "realRatingMatrix")
+```
+
+
+```{r}
+
+# Step 3: Collaborative Filtering (Item-Based for Efficiency)
+collaborative_filtering <- function(user_id, top_n = 10) {
+    recommender <- Recommender(ratings_matrix, method = "IBCF")  # Item-Based Collaborative Filtering
+    user_recommendations <- predict(recommender, ratings_matrix[user_id, ], n = top_n)
+    as(user_recommendations, "list")[[1]]  # Return list of recommended movie IDs
+}
+```
+
+```{r}
+# Step 4: Content-Based Filtering
+content_based_filtering <- function(watched_movies, top_n = 10) {
+    # Get genres of watched movies
+    watched_genres <- unique(unlist(movies$genres[movies$movieId %in% watched_movies]))
+    
+    # Recommend movies based on genre match
+    recommended_movies <- movies %>%
+        filter(!movieId %in% watched_movies) %>%  # Exclude already watched movies
+        rowwise() %>%
+        mutate(match_score = sum(genres %in% watched_genres)) %>%  # Calculate genre match score
+        arrange(desc(match_score)) %>%  # Sort by match score
+        head(top_n)
+    
+    recommended_movies$movieId  # Return list of recommended movie IDs
+}
+```
+
+
+```{r}
+# Step 5: Hybrid Recommendation
+hybrid_recommendation <- function(user_id, watched_movies, top_n = 10) {
+    # Collaborative Filtering Recommendations
+    cf_recs <- collaborative_filtering(user_id, top_n)
+    
+    # Content-Based Filtering Recommendations
+    cb_recs <- content_based_filtering(watched_movies, top_n)
+    
+    # Combine Recommendations
+    combined_recs <- union(cf_recs, cb_recs)  # Merge results
+    top_movies <- movies %>% filter(movieId %in% combined_recs) %>% head(top_n)  # Get movie details
+    return(top_movies)
+}
+```
+
+
+```{r}
+# Example Usage
+user_id <- 1  # Replace with actual user ID
+watched_movies <- c(1, 2, 3)  # Replace with actual watched movie IDs
+recommendations <- hybrid_recommendation(user_id, watched_movies, top_n = 5)
+print(recommendations)
+```
+
+
+```{r}
+# Preprocess Movies Data
+movies <- movies %>%
+    mutate(genres = strsplit(as.character(genres), "\\|"))  # Split genres into a list
+
+# Subset Data for Memory Optimization
+ratings_subset <- ratings %>% filter(userId <= 20000)
+
+# Create Sparse Rating Matrix
+ratings_matrix <- as(ratings_subset %>% 
+                         select(userId, movieId, rating) %>% 
+                         spread(movieId, rating, fill = 0),  # Fill missing ratings with 0
+                     "realRatingMatrix")
+```
+
+```{r}
+# Hybrid Recommendation Backend Logic
+collaborative_filtering <- function(user_id, top_n = 10) {
+    recommender <- Recommender(ratings_matrix, method = "IBCF")  # Item-Based Collaborative Filtering
+    user_recommendations <- predict(recommender, ratings_matrix[user_id, ], n = top_n)
+    as(user_recommendations, "list")[[1]]  # Return list of recommended movie IDs
+}
+
+content_based_filtering <- function(watched_movies, top_n = 10) {
+    watched_genres <- unique(unlist(movies$genres[movies$movieId %in% watched_movies]))
+    recommended_movies <- movies %>%
+        filter(!movieId %in% watched_movies) %>%  # Exclude watched movies
+        rowwise() %>%
+        mutate(match_score = sum(genres %in% watched_genres)) %>%  # Calculate genre match
+        arrange(desc(match_score)) %>%
+        head(top_n)
+    recommended_movies$movieId  # Return recommended movie IDs
+}
+
+hybrid_recommendation <- function(user_id, watched_movies, top_n = 10) {
+    cf_recs <- collaborative_filtering(user_id, top_n)
+    cb_recs <- content_based_filtering(watched_movies, top_n)
+    combined_recs <- union(cf_recs, cb_recs)  # Combine recommendations
+    top_movies <- movies %>% filter(movieId %in% combined_recs) %>% head(top_n)  # Get movie details
+    return(top_movies)
+}
+```
+
+
+
+```{r}
+# Define UI
+ui <- fluidPage(
+    theme = shinytheme("flatly"),
+    tags$head(
+        tags$style(HTML("
+            .recommendation-card {
+                border: 1px solid #ddd; 
+                border-radius: 10px; 
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); 
+                padding: 15px; 
+                margin-bottom: 15px; 
+                background: #f9f9f9;
+                display: flex;
+                align-items: center;
+            }
+            .recommendation-card img {
+                border-radius: 5px;
+                margin-right: 15px;
+            }
+            .recommendation-card:hover {
+                box-shadow: 0 6px 10px rgba(0, 0, 0, 0.2);
+                transform: scale(1.02);
+                transition: all 0.2s ease-in-out;
+            }
+        "))
+    ),
+    
+    titlePanel("Interactive Movie Recommendation System"),
+    
+    sidebarLayout(
+        sidebarPanel(
+            selectizeInput("watched_movies", 
+                           "Search for Previously Watched Movies:",
+                           choices = movies$title,  # Dynamically load movie titles
+                           multiple = TRUE, 
+                           options = list(
+                               placeholder = 'Start typing a movie name...',
+                               create = TRUE)),
+            br(),
+            actionButton("recommend", "Generate Recommendations", class = "btn-primary btn-lg")
+        ),
+        
+        mainPanel(
+            h3("Top 3 Movie Recommendations"),
+            div(id = "recommendations",
+                uiOutput("recommendation_cards")
+            ),
+            br(),
+            h3("Genre Match Analysis"),
+            plotOutput("genre_match_plot")
+        )
+    )
+)
+```
+
+```{r}
+# Define Server Logic
+server <- function(input, output, session) {
+    # Generate Recommendations
+    output$recommendation_cards <- renderUI({
+        req(input$recommend)  # Wait until "Generate Recommendations" is clicked
+        watched_movies <- movies$movieId[movies$title %in% input$watched_movies]  # Get watched movie IDs
+        recommendations <- hybrid_recommendation(1, watched_movies, top_n = 3)  # Replace 1 with dynamic user ID
+        
+        # Create dynamic recommendation cards
+        div(
+            lapply(1:nrow(recommendations), function(i) {
+                div(class = "recommendation-card",
+                    tags$img(src = "https://via.placeholder.com/100", alt = "Movie Poster", width = "100px"),  # Add actual posters if available
+                    div(
+                        h4(paste("Movie Title:", recommendations$title[i])),
+                        p(paste("Genre:", paste(recommendations$genres[[i]], collapse = ", "))),
+                        a("More Info", href = "https://www.imdb.com", target = "_blank")  # Replace with actual links if available
+                    )
+                )
+            })
+        )
+    })
+    
+    # Genre Match Analysis
+    output$genre_match_plot <- renderPlot({
+        req(input$recommend)  # Wait for recommendations
+        watched_movies <- movies$movieId[movies$title %in% input$watched_movies]
+        recommended_movies <- hybrid_recommendation(1, watched_movies, top_n = 3)
+        
+        # Visualize genre distribution in recommendations
+        genre_counts <- table(unlist(recommended_movies$genres))
+        barplot(genre_counts, col = "lightyellow", main = "Recommended Genre Distribution")
+    })
+}
+```
+
+```{r}
+# Run the App
+shinyApp(ui, server)
+```
+
+```{r}
+library(plotly)
+
+ui <- fluidPage(
+    theme = bs_theme(bootswatch = "cosmo", primary = "#4CAF50", secondary = "#ffffff"),
+    
+    # App Header
+    titlePanel("Movie Recommendation System"),
+    
+    # Centered Search and Input Section
+    fluidRow(
+        column(
+            12,
+            div(
+                style = "display: flex; justify-content: center; align-items: center; margin: 20px 0;",
+                div(
+                    style = "width: 50%; min-width: 300px; max-width: 600px;",  # Control size
+                    wellPanel(
+                        h4("Search and Input", style = "text-align: center;"),
+                        selectizeInput("watched_movies", 
+                                       "Search for Previously Watched Movies:",
+                                       choices = movies$title,  # Dynamically load movie titles
+                                       multiple = TRUE, 
+                                       options = list(
+                                           placeholder = 'Start typing a movie name...',
+                                           create = TRUE)),
+                        br(),
+                        div(
+                            style = "text-align: center;",
+                            actionButton("recommend", "Generate Recommendations", 
+                                         class = "btn btn-success btn-lg")
+                        )
+                    )
+                )
+            )
+        )
+    ),
+    
+    # Recommendations Section
+    fluidRow(
+        column(
+            12,
+            h3("Top 3 Movie Recommendations"),
+            div(
+                id = "recommendations",
+                style = "display: flex; flex-wrap: wrap; gap: 20px; justify-content: center;",  # Flexbox for side-by-side layout
+                uiOutput("recommendation_cards")
+            )
+        )
+    ),
+    
+    # Pie Chart Section
+    fluidRow(
+        column(
+            12,
+            h3("Genre Distribution of Recommendations"),
+            plotlyOutput("genre_pie_chart")  # Interactive pie chart
+        )
+    )
+)
+
+# Define Server Logic
+server <- function(input, output, session) {
+    # Generate Recommendations
+    recommendations <- reactive({
+        req(input$recommend)  # Wait until "Generate Recommendations" is clicked
+        watched_movies <- movies$movieId[movies$title %in% input$watched_movies]  # Get watched movie IDs
+        hybrid_recommendation(1, watched_movies, top_n = 3)  # Replace 1 with dynamic user ID
+    })
+    
+    # Render Recommendation Cards
+    output$recommendation_cards <- renderUI({
+        req(recommendations())
+        recs <- recommendations()
+        
+        lapply(1:nrow(recs), function(i) {
+            div(class = "recommendation-card",
+                style = "width: 30%;",  # Set width for side-by-side alignment
+                tags$img(src = "https://via.placeholder.com/150", alt = "Movie Poster", width = "100%"),  # Add actual posters if available
+                div(
+                    h4(paste("Movie Title:", recs$title[i])),
+                    p(paste("Genre:", paste(recs$genres[[i]], collapse = ", "))),
+                    p("A brief description of the movie can go here."),
+                    a("More Info", href = "https://www.imdb.com", target = "_blank")  # Replace with actual links if available
+                )
+            )
+        })
+    })
+    
+    # Render Genre Distribution Pie Chart
+    output$genre_pie_chart <- renderPlotly({
+        req(recommendations())
+        recs <- recommendations()
+        
+        # Count genres in the recommendations
+        genre_counts <- table(unlist(recs$genres))
+        genre_data <- data.frame(
+            Genre = names(genre_counts),
+            Count = as.numeric(genre_counts)
+        )
+        
+        # Create an interactive pie chart
+        plot_ly(
+            genre_data,
+            labels = ~Genre,
+            values = ~Count,
+            type = "pie",
+            textinfo = "label+percent",
+            hoverinfo = "label+percent+value",
+            marker = list(colors = c("#4CAF50", "#FFC107", "#FF5722", "#03A9F4", "#E91E63"))
+        ) %>%
+        layout(title = "Genre Distribution of Recommendations")
+    })
+}
+
+# Run the App
+shinyApp(ui, server)
+
+
+```
+
