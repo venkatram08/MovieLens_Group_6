@@ -1,0 +1,325 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+movies <- read.csv("/Users/leo/Downloads/archive 2/movie.csv")
+rating <- read.csv("/Users/leo/Downloads/archive 2/rating.csv")
+```
+
+
+```{r}
+print(dim(movies))
+head(movies)
+```
+
+
+```{r}
+print(dim(rating))
+head(rating)
+```
+```{r}
+rating <- subset(rating, select = -c(timestamp))
+```
+
+
+```{r}
+head(rating)
+
+```
+
+
+```{r}
+# Assuming movie and rating are your data frames
+merged_mr <- merge(rating, movies, by = "movieId")
+head(merged_mr)
+```
+
+
+```{r}
+dim(merged_mr)
+```
+
+
+```{r}
+# Sort the merged DataFrame by userId
+sorted_mru <- merged_mr[order(merged_mr$userId), ]
+head(sorted_mru)
+```
+```{r}
+# Reset the index after sorting
+rownames(sorted_mru) <- NULL
+
+```
+```{r}
+head(sorted_mru)
+```
+```{r}
+colSums(is.na(sorted_mru))
+```
+
+
+```{r}
+
+grouped_df <- sorted_mru %>%
+  group_by(movieId) %>%
+  summarise(user_count = n_distinct(userId))
+
+print(describe(grouped_df))
+head(grouped_df)
+```
+```{r}
+filtered_df <- grouped_df %>%
+  filter(user_count < 100)
+head(filtered_df)
+dim(filtered_df)
+movie_list <- filtered_df %>%
+  pull(movieId)
+```
+
+
+```{r}
+# Using dplyr to filter out rows where movieId is in movie_list
+library(dplyr)
+
+sorted_mru <- sorted_mru %>%
+  filter(!(movieId %in% movie_list))
+
+```
+
+
+```{r}
+dim(sorted_mru)
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+groupedusr_df <- sorted_mru %>%
+  group_by(userId) %>%
+  summarise(user_count = n_distinct(movieId))
+
+head(groupedusr_df)
+```
+
+
+```{r}
+describe(groupedusr_df)
+filtered_usr <- groupedusr_df %>%
+  filter(user_count < 50)
+head(filtered_usr)
+dim(filtered_usr)
+usr_list <- filtered_usr %>%
+  pull(userId)
+print(usr_list)
+```
+
+
+```{r}
+sorted_mru <- sorted_mru %>%
+  filter(!(userId %in% usr_list))
+```
+
+
+```{r}
+dim(sorted_mru)
+```
+
+
+```{r}
+# Ensure userId is numeric before filtering
+sorted_mru$userId <- as.numeric(as.character(sorted_mru$userId))
+sorted_fil <- sorted_mru[sorted_mru$userId %in% 1:10000, ]
+dim(sorted_fil)
+```
+```{r}
+head(sorted_fil)
+```
+```{r}
+describe(sorted_fil)
+```
+
+```{r}
+movie_avg_ratings <- aggregate(rating ~ movieId, data = sorted_fil, mean)
+head(movie_avg_ratings)
+```
+
+
+```{r}
+avg_merged_mr <- merge(movies, movie_avg_ratings, by = "movieId")
+dim(avg_merged_mr)
+```
+
+
+```{r}
+movie_list_fil <- as.list(avg_merged_mr$title)
+
+```
+
+
+
+```{r}
+library(reshape2)
+sorted_fil$rating <- as.numeric(sorted_fil$rating) 
+sorted_fil <- na.omit(sorted_fil)
+ 
+user_item_matrix <- dcast(sorted_fil, userId ~ title, value.var = "rating", fill = 0)
+rownames(user_item_matrix) <- user_item_matrix$userId
+user_item_matrix <- as.matrix(user_item_matrix[, -1]) 
+```
+```{r}
+rating_matrix <- as(user_item_matrix,"realRatingMatrix")
+```
+```{r}
+rec_model <- Recommender(rating_matrix, method = "UBCF")
+
+```
+
+```{r}
+excel_data <- read_excel("/Users/leo/Downloads/x_data.xlsx", sheet = 1)  
+specific_cell <- excel_data[2, 1]  # Replace row_number and column_number with actual numbers
+string_cell <- as.character(specific_cell)
+
+cleaned_string <- gsub("\\[|\\]", "", string_cell[1])
+cleaned_string1 <- gsub('"', '', cleaned_string)
+cleaned_string2 <- gsub("'", '', cleaned_string1)
+
+movie_list <- strsplit(cleaned_string2, ", ") |> unlist()
+
+print(movie_list)
+print(length(movie_list))
+```
+
+```{r}
+
+
+common_items_12 <- intersect(movie_list_fil, movie_list)
+
+```
+
+```{r}
+recommended_movies <- function(input_movies, rating_matrix, rec_model, top_n = 5) {
+  # Get the index of the movies in the matrix
+  movie_names <- colnames(rating_matrix)
+  input_movies_indices <- colnames(rating_matrix) %in% input_movies
+  avg_rat=c()
+  i=1
+  for (movie in input_movies) {
+    avg_rating <- avg_merged_mr[avg_merged_mr$title == movie, "rating"]
+    avg_rat[i]=avg_rating
+    i=i+1
+  }   
+  # Simulate a user who watched the input movies
+  simulated_user <- rep(0, length(rating_matrix))
+  simulated_user[input_movies_indices] <-avg_rat  # Assume max rating for input movies
+  simulated_user <- matrix(simulated_user, nrow = 1, dimnames = list("new_user", movie_names))
+  simulated_user <- as(simulated_user, "realRatingMatrix")
+  
+  # Predict recommendations for the simulated user
+  predictions <- predict(rec_model, simulated_user, n = top_n)
+  
+  # Return the recommended movie names
+  rec_mov<-as(predictions, "list")[[1]]
+  return(rec_mov)
+}
+```
+
+
+```{r}
+# Get recommendations
+recommendations <- recommended_movies(common_items_12, rating_matrix, rec_model, top_n = 3)
+print(recommendations)
+```
+```{r}
+excel_datax <- read_excel("/Users/leo/Downloads/y_data.xlsx", sheet = 1)  
+specific_cellx <- excel_datax[2, 1]  # Replace row_number and column_number with actual numbers
+string_cellx <- as.character(specific_cell)
+
+cleaned_stringx <- gsub("\\[|\\]", "", string_cellx[1])
+cleaned_string1x <- gsub('"', '', cleaned_stringx)
+cleaned_string2x <- gsub("'", '', cleaned_string1x)
+
+y_datax <- strsplit(cleaned_string2x, ", ") |> unlist()
+
+```
+
+```{r}
+
+
+common_items_13 <- intersect(movie_list_fil, y_datax)
+
+```
+
+```{r}
+common_items_1 <- intersect(recommendations, y_datax)
+c1=length(common_items_1)
+common_items_2 <- intersect(recommendations, common_items_12)
+c2=length(common_items_2)
+score=(c1-c2)/3
+print(score)
+```
+
+
+
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
