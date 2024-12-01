@@ -251,120 +251,59 @@ library(bslib)
 library(shinythemes)
 library(tidyr)
 
+# Define UI
 ui <- fluidPage(
-    theme = bs_theme(bootswatch = "cosmo", primary = "#4CAF50", secondary = "#ffffff"),
-    
-    # App Header
-    titlePanel("Movie Recommendation System"),
-    
-    # Centered Search and Input Section
-    fluidRow(
-        column(
-            12,
-            div(
-                style = "display: flex; justify-content: center; align-items: center; margin: 20px 0;",
-                div(
-                    style = "width: 50%; min-width: 300px; max-width: 600px;",  # Control size
-                    wellPanel(
-                        h4("Search and Input", style = "text-align: center;"),
-                        selectizeInput("watched_movies", 
-                                       "Search for Previously Watched Movies:",
-                                       choices = movies$title,  # Dynamically load movie titles
-                                       multiple = TRUE, 
-                                       options = list(
-                                           placeholder = 'Start typing a movie name...',
-                                           create = TRUE)),
-                        br(),
-                        div(
-                            style = "text-align: center;",
-                            actionButton("recommend", "Generate Recommendations", 
-                                         class = "btn btn-success btn-lg")
-                        )
-                    )
-                )
-            )
-        )
+  titlePanel("Movie Recommendation System"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      h3("Select Movies"),
+      selectInput(
+        inputId = "selected_movies",
+        label = "Choose movies you like (multiple selections allowed):",
+        choices = movie_list_fil, # This should be the list of movies from your data
+        selected = NULL,
+        multiple = TRUE
+      ),
+      actionButton("recommend_btn", "Get Recommendations")
     ),
     
-    # Recommendations Section
-    fluidRow(
-        column(
-            12,
-            h3("Top 3 Movie Recommendations"),
-            div(
-                id = "recommendations",
-                style = "display: flex; flex-wrap: wrap; gap: 20px; justify-content: center;",  # Flexbox for side-by-side layout
-                uiOutput("recommendation_cards")
-            )
-        )
-    ),
-    
-    # Pie Chart Section
-    fluidRow(
-        column(
-            12,
-            h3("Genre Distribution of Recommendations"),
-            plotlyOutput("genre_pie_chart")  # Interactive pie chart
-        )
+    mainPanel(
+      h3("Recommendations"),
+      verbatimTextOutput("recommendations_output"),
+      h3("Score"),
+      verbatimTextOutput("score_output")
     )
+  )
 )
 
 # Define Server Logic
-server <- function(input, output, session) {
-    # Generate Recommendations
-    recommendations <- reactive({
-        req(input$recommend)  # Wait until "Generate Recommendations" is clicked
-        watched_movies <- movies$movieId[movies$title %in% input$watched_movies]  # Get watched movie IDs
-        hybrid_recommendation(1, watched_movies, top_n = 3)  # Replace 1 with dynamic user ID
-    })
-    
-    # Render Recommendation Cards
-    output$recommendation_cards <- renderUI({
-        req(recommendations())
-        recs <- recommendations()
-        
-        lapply(1:nrow(recs), function(i) {
-            div(class = "recommendation-card",
-                style = "width: 30%;",  # Set width for side-by-side alignment
-                tags$img(src = "https://via.placeholder.com/150", alt = "Movie Poster", width = "100%"),  # Add actual posters if available
-                div(
-                    h4(paste("Movie Title:", recs$title[i])),
-                    p(paste("Genre:", paste(recs$genres[[i]], collapse = ", "))),
-                    p("A brief description of the movie can go here."),
-                    a("More Info", href = "https://www.imdb.com", target = "_blank")  # Replace with actual links if available
-                )
-            )
-        })
-    })
-    
-    # Render Genre Distribution Pie Chart
-    output$genre_pie_chart <- renderPlotly({
-        req(recommendations())
-        recs <- recommendations()
-        
-        # Count genres in the recommendations
-        genre_counts <- table(unlist(recs$genres))
-        genre_data <- data.frame(
-            Genre = names(genre_counts),
-            Count = as.numeric(genre_counts)
-        )
-        
-        # Create an interactive pie chart
-        plot_ly(
-            genre_data,
-            labels = ~Genre,
-            values = ~Count,
-            type = "pie",
-            textinfo = "label+percent",
-            hoverinfo = "label+percent+value",
-            marker = list(colors = c("#4CAF50", "#FFC107", "#FF5722", "#03A9F4", "#E91E63"))
-        ) %>%
-        layout(title = "Genre Distribution of Recommendations")
-    })
+server <- function(input, output) {
+  recommendations <- eventReactive(input$recommend_btn, {
+    req(input$selected_movies)
+    recommended_movies(input$selected_movies, rating_matrix, rec_model, top_n = 3)
+  })
+  
+  score <- eventReactive(input$recommend_btn, {
+    req(input$selected_movies)
+    common_items_1 <- intersect(recommendations(), y_data)
+    common_items_2 <- intersect(recommendations(), common_items_12)
+    (length(common_items_1) - length(common_items_2)) / 3
+  })
+  
+  output$recommendations_output <- renderText({
+    req(recommendations())
+    paste("Top 3 Recommendations: ", paste(recommendations(), collapse = ", "))
+  })
+  
+  output$score_output <- renderText({
+    req(score())
+    paste("Recommendation Score: ", round(score(), 4))
+  })
 }
 
-# Run the App
-shinyApp(ui, server)
+# Run the Application
+shinyApp(ui = ui, server = server)
 
 ```
 
