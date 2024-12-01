@@ -1,0 +1,418 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+movies <- read.csv("/Users/venkatvelinedi/Downloads/archive/movie.csv")
+rating <- read.csv("/Users/venkatvelinedi/Downloads/archive/rating.csv")
+```
+
+
+```{r}
+print(dim(movies))
+head(movies)
+```
+
+
+```{r}
+print(dim(rating))
+head(rating)
+```
+```{r}
+rating <- subset(rating, select = -c(timestamp))
+```
+
+
+```{r}
+head(rating)
+
+```
+
+
+```{r}
+# Assuming movie and rating are your data frames
+merged_mr <- merge(rating, movies, by = "movieId")
+head(merged_mr)
+```
+
+
+```{r}
+dim(merged_mr)
+```
+
+
+```{r}
+# Sort the merged DataFrame by userId
+sorted_mru <- merged_mr[order(merged_mr$userId), ]
+head(sorted_mru)
+```
+```{r}
+# Reset the index after sorting
+rownames(sorted_mru) <- NULL
+
+```
+```{r}
+head(sorted_mru)
+```
+```{r}
+colSums(is.na(sorted_mru))
+```
+
+
+```{r}
+
+grouped_df <- sorted_mru %>%
+  group_by(movieId) %>%
+  summarise(user_count = n_distinct(userId))
+
+print(describe(grouped_df))
+head(grouped_df)
+```
+```{r}
+filtered_df <- grouped_df %>%
+  filter(user_count < 100)
+head(filtered_df)
+dim(filtered_df)
+movie_list <- filtered_df %>%
+  pull(movieId)
+```
+
+
+```{r}
+# Using dplyr to filter out rows where movieId is in movie_list
+library(dplyr)
+
+sorted_mru <- sorted_mru %>%
+  filter(!(movieId %in% movie_list))
+
+```
+
+
+```{r}
+dim(sorted_mru)
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+groupedusr_df <- sorted_mru %>%
+  group_by(userId) %>%
+  summarise(user_count = n_distinct(movieId))
+
+head(groupedusr_df)
+```
+
+
+```{r}
+describe(groupedusr_df)
+filtered_usr <- groupedusr_df %>%
+  filter(user_count < 50)
+head(filtered_usr)
+dim(filtered_usr)
+usr_list <- filtered_usr %>%
+  pull(userId)
+print(usr_list)
+```
+
+
+```{r}
+sorted_mru <- sorted_mru %>%
+  filter(!(userId %in% usr_list))
+```
+
+
+```{r}
+dim(sorted_mru)
+```
+
+
+```{r}
+# Ensure userId is numeric before filtering
+sorted_mru$userId <- as.numeric(as.character(sorted_mru$userId))
+sorted_fil <- sorted_mru[sorted_mru$userId %in% 1:5000, ]
+dim(sorted_fil)
+```
+```{r}
+head(sorted_fil)
+```
+```{r}
+describe(sorted_fil)
+```
+
+```{r}
+movie_avg_ratings <- aggregate(rating ~ movieId, data = sorted_fil, mean)
+head(movie_avg_ratings)
+```
+
+
+```{r}
+avg_merged_mr <- merge(movies, movie_avg_ratings, by = "movieId")
+dim(avg_merged_mr)
+```
+
+
+```{r}
+movie_list_fil <- as.list(avg_merged_mr$title)
+
+```
+
+
+
+```{r}
+library(reshape2)
+sorted_fil$rating <- as.numeric(sorted_fil$rating) 
+sorted_fil <- na.omit(sorted_fil)
+ 
+user_item_matrix <- dcast(sorted_fil, userId ~ title, value.var = "rating", fill = 0)
+rownames(user_item_matrix) <- user_item_matrix$userId
+user_item_matrix <- as.matrix(user_item_matrix[, -1]) 
+
+rating_matrix <- as(user_item_matrix,"realRatingMatrix")
+rec_model <- Recommender(rating_matrix, method = "UBCF")
+
+```
+
+```{r}
+x_data=c('Arlington Road (1999)', 'When a Man Loves a Woman (1994)', 'Dr. Dolittle (1998)', 'Shakespeare in Love (1998)', 'Bound (1996)', 'Fantasia 2000 (1999)', 'As Good as It Gets (1997)', 'Desperately Seeking Susan (1985)', 'Titanic (1997)', 'Alive (1993)', 'Good Will Hunting (1997)', 'Out of Africa (1985)', 'Pacific Heights (1990)', 'Bone Collector, The (1999)', 'Silence of the Lambs, The (1991)', 'Random Hearts (1999)', 'Haunting, The (1999)', 'Patriot, The (2000)', 'Stuart Little (1999)', 'Titan A.E. (2000)', 'End of Days (1999)', "Schindler's List (1993)", 'Shawshank Redemption, The (1994)', 'Deep End of the Ocean, The (1999)', 'Donnie Brasco (1997)', 'Life Is Beautiful (La Vita Ã¨ bella) (1997)', 'Butcher Boy, The (1997)', 'Red Violin, The (Violon rouge, Le) (1998)', 'Leaving Las Vegas (1995)', 'Elizabeth (1998)', 'Braveheart (1995)', 'Meteor (1979)', 'And the Band Played On (1993)', 'Mosquito Coast, The (1986)', 'Fight Club (1999)', 'Short Cuts (1993)', 'Diner (1982)', 'Cider House Rules, The (1999)', "Ulee's Gold (1997)", 'Prince of Egypt, The (1998)', 'Sixth Sense, The (1999)', 'Cell, The (2000)', 'Who Framed Roger Rabbit? (1988)', 'Being John Malkovich (1999)', 'Awakenings (1990)', 'American Beauty (1999)', "General's Daughter, The (1999)")
+
+common_items_12 <- intersect(movie_list_fil, x_data)
+
+```
+
+```{r}
+recommended_movies <- function(input_movies, rating_matrix, rec_model, top_n = 5) {
+  # Get the index of the movies in the matrix
+  movie_names <- colnames(rating_matrix)
+  input_movies_indices <- colnames(rating_matrix) %in% input_movies
+  avg_rat=c()
+  i=1
+  for (movie in input_movies) {
+    avg_rating <- avg_merged_mr[avg_merged_mr$title == movie, "rating"]
+    avg_rat[i]=avg_rating
+    i=i+1
+  }   
+  # Simulate a user who watched the input movies
+  simulated_user <- rep(0, length(rating_matrix))
+  simulated_user[input_movies_indices] <-avg_rat  # Assume max rating for input movies
+  simulated_user <- matrix(simulated_user, nrow = 1, dimnames = list("new_user", movie_names))
+  simulated_user <- as(simulated_user, "realRatingMatrix")
+  
+  # Predict recommendations for the simulated user
+  predictions <- predict(rec_model, simulated_user, n = top_n)
+  
+  # Return the recommended movie names
+  rec_mov<-as(predictions, "list")[[1]]
+  return(rec_mov)
+}
+```
+
+
+```{r}
+# Get recommendations
+recommendations <- recommended_movies(common_items_12, rating_matrix, rec_model, top_n = 3)
+print(recommendations)
+```
+
+```{r}
+y_data=c('Joy Luck Club, The (1993)', 'Blair Witch Project, The (1999)', 'Malcolm X (1992)', 'Abyss, The (1989)', 'Twelve Monkeys (a.k.a. 12 Monkeys) (1995)', 'Dead Man Walking (1995)', 'eXistenZ (1999)', 'Pulp Fiction (1994)', 'Mission: Impossible II (2000)', 'I Saw What You Did (1965)', 'Edward Scissorhands (1990)', 'Bronx Tale, A (1993)', 'Babe (1995)', 'South Park: Bigger, Longer and Uncut (1999)', 'Eyes Wide Shut (1999)', 'Poseidon Adventure, The (1972)', 'Scent of a Woman (1992)', 'Fargo (1996)', 'Creepshow (1982)', 'Best Man, The (1999)', 'Me, Myself & Irene (2000)', 'Run Lola Run (Lola rennt) (1998)', 'Ghostbusters (a.k.a. Ghost Busters) (1984)', 'Dead Calm (1989)', 'Election (1999)', 'True Lies (1994)', 'Thelma & Louise (1991)', 'Goodfellas (1990)', 'Frequency (2000)', 'Live and Let Die (1973)', 'Talented Mr. Ripley, The (1999)', 'Casablanca (1942)', 'Instinct (1999)', 'Go (1999)', 'Doors, The (1991)', 'Night of the Living Dead (1968)', 'Magnolia (1999)', 'Arachnophobia (1990)', 'Lolita (1997)', 'Flesh and Bone (1993)', 'Frenzy (1972)', 'Crying Game, The (1992)', 'Green Mile, The (1999)', 'JFK (1991)', 'Pushing Tin (1999)', 'Gladiator (2000)', 'Big Daddy (1999)')
+
+common_items_13 <- intersect(movie_list_fil, y_data)
+
+```
+
+```{r}
+common_items_1 <- intersect(recommendations, y_data)
+c1=length(common_items_1)
+common_items_2 <- intersect(recommendations, common_items_12)
+c2=length(common_items_2)
+score=(c1-c2)/3
+print(score)
+```
+
+
+
+
+
+```{r}
+library(shiny)
+library(plotly)
+library(dplyr)
+library(recommenderlab)
+library(bslib) 
+library(shinythemes)
+library(tidyr)
+
+ui <- fluidPage(
+    theme = bs_theme(bootswatch = "cosmo", primary = "#4CAF50", secondary = "#ffffff"),
+    
+    # App Header
+    titlePanel("Movie Recommendation System"),
+    
+    # Centered Search and Input Section
+    fluidRow(
+        column(
+            12,
+            div(
+                style = "display: flex; justify-content: center; align-items: center; margin: 20px 0;",
+                div(
+                    style = "width: 50%; min-width: 300px; max-width: 600px;",  # Control size
+                    wellPanel(
+                        h4("Search and Input", style = "text-align: center;"),
+                        selectizeInput("watched_movies", 
+                                       "Search for Previously Watched Movies:",
+                                       choices = movies$title,  # Dynamically load movie titles
+                                       multiple = TRUE, 
+                                       options = list(
+                                           placeholder = 'Start typing a movie name...',
+                                           create = TRUE)),
+                        br(),
+                        div(
+                            style = "text-align: center;",
+                            actionButton("recommend", "Generate Recommendations", 
+                                         class = "btn btn-success btn-lg")
+                        )
+                    )
+                )
+            )
+        )
+    ),
+    
+    # Recommendations Section
+    fluidRow(
+        column(
+            12,
+            h3("Top 3 Movie Recommendations"),
+            div(
+                id = "recommendations",
+                style = "display: flex; flex-wrap: wrap; gap: 20px; justify-content: center;",  # Flexbox for side-by-side layout
+                uiOutput("recommendation_cards")
+            )
+        )
+    ),
+    
+    # Pie Chart Section
+    fluidRow(
+        column(
+            12,
+            h3("Genre Distribution of Recommendations"),
+            plotlyOutput("genre_pie_chart")  # Interactive pie chart
+        )
+    )
+)
+
+# Define Server Logic
+server <- function(input, output, session) {
+    # Generate Recommendations
+    recommendations <- reactive({
+        req(input$recommend)  # Wait until "Generate Recommendations" is clicked
+        watched_movies <- movies$movieId[movies$title %in% input$watched_movies]  # Get watched movie IDs
+        hybrid_recommendation(1, watched_movies, top_n = 3)  # Replace 1 with dynamic user ID
+    })
+    
+    # Render Recommendation Cards
+    output$recommendation_cards <- renderUI({
+        req(recommendations())
+        recs <- recommendations()
+        
+        lapply(1:nrow(recs), function(i) {
+            div(class = "recommendation-card",
+                style = "width: 30%;",  # Set width for side-by-side alignment
+                tags$img(src = "https://via.placeholder.com/150", alt = "Movie Poster", width = "100%"),  # Add actual posters if available
+                div(
+                    h4(paste("Movie Title:", recs$title[i])),
+                    p(paste("Genre:", paste(recs$genres[[i]], collapse = ", "))),
+                    p("A brief description of the movie can go here."),
+                    a("More Info", href = "https://www.imdb.com", target = "_blank")  # Replace with actual links if available
+                )
+            )
+        })
+    })
+    
+    # Render Genre Distribution Pie Chart
+    output$genre_pie_chart <- renderPlotly({
+        req(recommendations())
+        recs <- recommendations()
+        
+        # Count genres in the recommendations
+        genre_counts <- table(unlist(recs$genres))
+        genre_data <- data.frame(
+            Genre = names(genre_counts),
+            Count = as.numeric(genre_counts)
+        )
+        
+        # Create an interactive pie chart
+        plot_ly(
+            genre_data,
+            labels = ~Genre,
+            values = ~Count,
+            type = "pie",
+            textinfo = "label+percent",
+            hoverinfo = "label+percent+value",
+            marker = list(colors = c("#4CAF50", "#FFC107", "#FF5722", "#03A9F4", "#E91E63"))
+        ) %>%
+        layout(title = "Genre Distribution of Recommendations")
+    })
+}
+
+# Run the App
+shinyApp(ui, server)
+
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
