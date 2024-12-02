@@ -1,0 +1,511 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(caret)
+library(cowplot)
+library(scales)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(ggplot2)
+library(ggthemes)
+library(recommenderlab)
+library(reshape2)
+library(psych)
+```
+
+```{r}
+movies <- read.csv("/Users/leo/Downloads/archive 2/movie.csv")
+rating <- read.csv("/Users/leo/Downloads/archive 2/rating.csv")
+
+```
+
+```{r}
+
+```
+
+
+```{r}
+print(dim(movies))
+head(movies)
+```
+
+
+```{r}
+print(dim(rating))
+head(rating)
+```
+```{r}
+rating <- subset(rating, select = -c(timestamp))
+```
+
+
+```{r}
+head(rating)
+
+```
+
+
+```{r}
+# Assuming movie and rating are your data frames
+merged_mr <- merge(rating, movies, by = "movieId")
+head(merged_mr)
+```
+
+
+```{r}
+dim(merged_mr)
+```
+
+
+```{r}
+# Sort the merged DataFrame by userId
+sorted_mru <- merged_mr[order(merged_mr$userId), ]
+head(sorted_mru)
+```
+```{r}
+# Reset the index after sorting
+rownames(sorted_mru) <- NULL
+
+```
+```{r}
+head(sorted_mru)
+```
+```{r}
+colSums(is.na(sorted_mru))
+```
+
+```{r}
+# Load necessary libraries
+
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(scales) # For comma function in scale_y_continuous
+
+# Corrected pipeline for plotting rating distribution
+sorted_mru %>%
+  group_by(rating) %>%
+  dplyr::summarize(count = n(), .groups = 'drop') %>%  # Explicitly use dplyr::summarize
+  ggplot(aes(x = rating, y = count)) +
+  geom_line(color = "#1f77b4", size = 1) + # Blue line
+  geom_point(color = "#ff7f0e", size = 3) + # Orange points on line
+  ggtitle("Rating Distribution") +
+  xlab("Rating") +
+  ylab("Occurrences Count") +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(n.breaks = 10) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_text(vjust = -2, face = "bold"), 
+    axis.title.y = element_text(vjust = 2, face = "bold"), 
+    plot.title = element_text(face = "bold", hjust = 0.5, color = "#2c3e50")
+  )
+
+
+```
+```{r}
+#User x Movie Matrix Construction
+limit <- 60
+user_movie_matrix <- sorted_mru %>% 
+  filter(userId %in% sample(unique(sorted_mru$userId), limit)) %>%
+  select(userId, movieId, rating) %>%
+  mutate(rating = 1) %>%
+  spread(movieId, rating) %>% 
+  select(sample(ncol(.), limit)) %>% 
+  as.matrix() %>% 
+  t(.)
+
+user_movie_matrix %>% 
+  image(1:limit, 1:limit,., xlab = "Movies", ylab = "Users") +
+  abline(h = 0:limit + 0.5, v = 0:limit + 0.5, col = "grey") +
+  title(main = list("User x Movie matrix", cex = 1, font = 2))
+```
+```{r}
+
+
+# Calculate genres count and display the top 8
+sorted_mru %>% 
+  group_by(genres) %>% 
+  dplyr::summarize(count = n(), .groups = "drop") %>%  # Summarize with explicit namespace
+  slice_head(n = 8)  # Select the top 8 rows
+
+```
+
+```{r}
+#Individual genres count
+genres <- c("Action", "Adventure", "Animation", 
+            "Children", "Comedy", "Crime", 
+            "Documentary", "Drama", "Fantasy", 
+            "Film-Noir", "Horror", "Musical", 
+            "Mystery", "Romance", "Sci-Fi", 
+            "Thriller", "War", "Western")
+
+genres_df <- data.frame(
+  Genres = genres,
+  Count = sapply(genres, function(x) {
+    sum(str_detect(sorted_mru$genres, x))
+  })
+)
+
+print(genres_df)
+```
+
+```{r}
+genres_df %>%
+  ggplot(aes(x = Count, y = reorder(Genres, Count), fill = Count)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  ggtitle("Genre Popularity (Horizontal Bar Chart)") +
+  xlab("Number of Ratings") +
+  ylab("Genres") +
+  scale_fill_gradient(low = "#FF8888", high = "#FF0000") +
+  scale_x_continuous(labels = scales::comma) +
+  theme_minimal() +
+  theme(plot.title = element_text(vjust = 3, hjust = 0.5, size = 14, face = "bold"),
+        axis.title.x = element_text(vjust = -2, size = 12),
+        axis.title.y = element_text(vjust = 2, size = 12),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+```
+
+
+```{r}
+
+grouped_df <- sorted_mru %>%
+  group_by(movieId) %>%
+  summarise(user_count = n_distinct(userId))
+
+print(describe(grouped_df))
+head(grouped_df)
+```
+
+```{r}
+filtered_df <- grouped_df %>%
+  filter(user_count < 100)
+head(filtered_df)
+dim(filtered_df)
+movie_list <- filtered_df %>%
+  pull(movieId)
+```
+
+
+```{r}
+# Using dplyr to filter out rows where movieId is in movie_list
+library(dplyr)
+
+sorted_mru <- sorted_mru %>%
+  filter(!(movieId %in% movie_list))
+
+```
+
+
+```{r}
+dim(sorted_mru)
+```
+
+
+```{r}
+groupedusr_df <- sorted_mru %>%
+  group_by(userId) %>%
+  summarise(user_count = n_distinct(movieId))
+
+head(groupedusr_df)
+```
+
+
+```{r}
+describe(groupedusr_df)
+filtered_usr <- groupedusr_df %>%
+  filter(user_count < 50)
+head(filtered_usr)
+dim(filtered_usr)
+usr_list <- filtered_usr %>%
+  pull(userId)
+print(usr_list)
+```
+
+
+```{r}
+sorted_mru <- sorted_mru %>%
+  filter(!(userId %in% usr_list))
+```
+
+
+```{r}
+dim(sorted_mru)
+```
+
+
+```{r}
+# Ensure userId is numeric before filtering
+sorted_mru$userId <- as.numeric(as.character(sorted_mru$userId))
+sorted_fil <- sorted_mru[sorted_mru$userId %in% 1:10000, ]
+dim(sorted_fil)
+```
+```{r}
+head(sorted_fil)
+```
+```{r}
+describe(sorted_fil)
+```
+
+```{r}
+movie_avg_ratings <- aggregate(rating ~ movieId, data = sorted_fil, mean)
+head(movie_avg_ratings)
+```
+
+
+```{r}
+avg_merged_mr <- merge(movies, movie_avg_ratings, by = "movieId")
+dim(avg_merged_mr)
+```
+
+
+```{r}
+movie_list_fil <- as.list(avg_merged_mr$title)
+
+```
+
+
+
+```{r}
+library(reshape2)
+sorted_fil$rating <- as.numeric(sorted_fil$rating) 
+sorted_fil <- na.omit(sorted_fil)
+ 
+user_item_matrix <- dcast(sorted_fil, userId ~ title, value.var = "rating", fill = 0)
+rownames(user_item_matrix) <- user_item_matrix$userId
+user_item_matrix <- as.matrix(user_item_matrix[, -1]) 
+```
+```{r}
+rating_matrix <- as(user_item_matrix,"realRatingMatrix")
+```
+```{r}
+rec_model <- Recommender(rating_matrix, method = "UBCF",parameter = list(
+    method = "Cosine",   
+    nn = 30,            
+    normalize = "Z-score" 
+  ))
+
+```
+
+```{r}
+file_path <- "/Users/leo/Downloads/x_data.csv"
+
+# Read the data from the CSV file (assuming the data is in the first column)
+data <- read.csv(file_path, header = FALSE, stringsAsFactors = FALSE)
+
+# Extract the first column as a vector
+movie_data <- data[[1]]
+result_list_x=c()
+cleaned_string <- gsub("\\[|\\]|'", "", movie_data)
+cleaned_string <- gsub("\\\\", "", cleaned_string)
+scores=c(33.33,33.33,33.33,66.66,66.66)
+for (i in 2:30) {
+
+  result_list_new <- strsplit(cleaned_string, "','")[[i]]
+
+  result_list_x <- append(result_list_x, list(result_list_new))
+
+}
+print(result_list_x[1])
+```
+
+```{r}
+x_data1=c('Crimson Tide (1995)', 'Ace Ventura: When Nature Calls (1995)', 'Down Periscope (1996)', 'Santa Clause, The (1994)', 'Interview with the Vampire: The Vampire Chronicles (1994)', 'Billy Madison (1995)', 'When a Man Loves a Woman (1994)', 'Immortal Beloved')
+x_data2=c('Baby Geniuses (1999)', 'Thomas Crown Affair, The (1999)', 'Close Encounters of the Third Kind (1977)', "Ferris Bueller's Day Off (1986)", 'Beetlejuice (1988)', 'Married to the Mob (1988)', 'Grease (1978)', 'Groundhog Day (1993)', "Bug's Life, A (1998)")
+x_data3=c('The Chase (1966)', 'Taken 2 (2012)', 'Friday Night Lights (2004)', 'Dead Poets Society (1989)', 'American Gangster (2007)', 'Birdman of Alcatraz (1962)', 'Dirty Dozen: Next Mission, The (1985)', 'Black Beauty (1994)', 'Lars and the Real Girl (2007)')
+
+x_data4=c('Star Wars: Episode I - The Phantom Menace (1999)', 'Crouching Tiger, Hidden Dragon (Wo hu cang long) (2000)', 'Mississippi Burning (1988)', "Ferris Bueller's Day Off (1986)", 'Beverly Hills Cop (1984)', 'Bambi (1942)', 'When Harry Met Sally... (1989)')
+x_data5=c('American Pie (1999)', 'Best of the Best 3: No Turning Back (1995)', 'Witness (1985)', 'Raiders of the Lost Ark (Indiana Jones and the Raiders of the Lost Ark) (1981)', 'Ghost (1990)', 'Star Wars: Episode V - The Empire Strikes Back (1980)')
+x_data6=c('Mission: Impossible (1996)', 'Absolute Power (1997)', 'Star Wars: Episode IV - A New Hope (1977)', 'Jingle All the Way (1996)', 'Toy Story (1995)', 'Ghost and the Darkness, The (1996)', 'Space Jam (1996)', 'Birdcage, The (1996)', 'Michael (1996)')
+x_data7=c('Allan Quatermain and the Lost City of Gold (1987)', 'Summer of Sam (1999)', 'Bloodsport (1988)', 'Hot Shots! Part Deux (1993)', 'Elizabeth (1998)', 'Deep Rising (1998)', 'Teenage Mutant Ninja Turtles II: The Secret of the Ooze (1991)')
+
+x_data12=c('Thoroughly Modern Millie (1967)', 'Subway (1985)', 'Femme Nikita, La (Nikita) (1990)', 'Accused, The (1988)', 'Being John Malkovich (1999)', 'Office Space (1999)', 'Crying Game, The (1992)', 'Insider, The (1999)', 'League of Their Own, A (1992)')
+```
+
+
+```{r}
+recommended_movies <- function(input_movies, rating_matrix, rec_model, top_n = 5) {
+  # Get the index of the movies in the matrix
+  movie_names <- colnames(rating_matrix)
+  input_movies_indices <- colnames(rating_matrix) %in% input_movies
+  avg_rat=c()
+  i=1
+  for (movie in input_movies) {
+    avg_rating <- avg_merged_mr[avg_merged_mr$title == movie, "rating"]
+    avg_rat[i]=avg_rating
+    i=i+1
+  }   
+  # Simulate a user who watched the input movies
+  simulated_user <- rep(0, length(rating_matrix))
+  simulated_user[input_movies_indices] <-avg_rat  # Assume max rating for input movies
+  simulated_user <- matrix(simulated_user, nrow = 1, dimnames = list("new_user", movie_names))
+  simulated_user <- as(simulated_user, "realRatingMatrix")
+  
+  # Predict recommendations for the simulated user
+  predictions <- predict(rec_model, simulated_user, n = top_n)
+  
+  # Return the recommended movie names
+  rec_mov<-as(predictions, "list")[[1]]
+  return(rec_mov)
+}
+```
+
+
+```{r}
+# Get recommendations
+common_items_x <- intersect(movie_list_fil,x_data)
+
+recommendations <- recommended_movies(common_items_x, rating_matrix, rec_model, top_n = 3)
+print(recommendations)
+
+write.csv(recommendations, "group_6.csv")
+
+```
+```{r}
+file_path_y <- "/Users/leo/Downloads/y_data.csv"
+
+# Read the data from the CSV file (assuming the data is in the first column)
+data1 <- read.csv(file_path_y, header = FALSE, stringsAsFactors = FALSE)
+
+# Extract the first column as a vector
+movie_data1 <- data1[[1]]
+result_listy=c()
+cleaned_string1 <- gsub("\\[|\\]|'", "", movie_data1)
+
+# Split by commas to create a list
+for (i in 2:30) {
+
+  result_list1 <- strsplit(cleaned_string1, ",")[[i]]
+  result_list1 <- trimws(result_list1)
+  result_listy <- append(result_listy, list(result_list1))
+
+}
+# Output
+```
+```{r}
+k=1
+final_scores=c()
+for(i in result_list_x){
+  common_items_x <- intersect(movie_list_fil,i)
+  recommendations <- recommended_movies(common_items_x, rating_matrix, rec_model, top_n = 3)
+  common_items_x2 <- intersect(recommendations, result_listy[k])
+  common_items_y2 <- intersect(recommendations, i)
+  c1=length(common_items_x2)
+  c2=length(common_items_y2)
+  score=(c1-c2)/3
+  final_scores=append(final_scores,score)
+  k=k+1
+}
+print(mean(final_scores))
+```
+```{r}
+y_data1=c('Under Siege 2: Dark Territory (1995)', "City Slickers II: The Legend of Curly's Gold (1994)", 'To Die For (1995)', 'While You Were Sleeping (1995)', 'Kiss of Death (1995)', 'Nixon (1995)', 'Jade (1995)', 'Broken Arrow (1996)', 'Cops and Robbersons (1994)', 'Congo (1995)', 'Twelve Monkeys (a.k.a. 12 Monkeys) (1995)', 'Boys on the Side (1995)', 'Get Shorty (1995)', 'Clueless (1995)', 'Braveheart (1995)', 'Rob Roy (1995)', "Nobody's Fool (1994)", 'L√©on: The Professional (a.k.a. The Professional) (L√©on) (1994)', 'I.Q. (1994)', 'Natural Born Killers (1994)', 'Star Wars: Episode IV - A New Hope (1977)', 'Cliffhanger (1993)', 'Lord of Illusions (1995)', 'Basketball Diaries, The (1995)', 'Tombstone (1993)', 'Kids (1995)', 'Apollo 13 (1995)', 'Usual Suspects, The (1995)', 'Johnny Mnemonic (1995)', 'Exit to Eden (1994)', 'American President, The (1995)', 'True Lies (1994)', 'Exotica (1994)', 'Quick and the Dead, The (1995)', 'Babe (1995)', 'Sense and Sensibility (1995)', 'Showgirls (1995)', 'True Romance (1993)', 'Clerks (1994)', 'Don Juan DeMarco (1995)', 'Net, The (1995)', 'Strange Days (1995)', 'Legends of the Fall (1994)', 'War, The (1994)', 'Mortal Kombat (1995)')
+
+y_data2=c('E.T. the Extra-Terrestrial (1982)', 'Runaway Bride (1999)', 'M*A*S*H (a.k.a. MASH) (1970)', 'Midnight Express (1978)', 'Lethal Weapon 2 (1989)', 'Nutty Professor, The (1963)', 'Mickey Blue Eyes (1999)', 'Tea with Mussolini (1999)', 'Bowfinger (1999)', 'Lethal Weapon (1987)', 'Bachelor Party (1984)', 'Bull Durham (1988)', 'Airplane! (1980)', 'Hercules (1997)', 'South Park: Bigger, Longer and Uncut (1999)', 'Austin Powers: The Spy Who Shagged Me (1999)', 'Cruel Intentions (1999)', 'Indiana Jones and the Temple of Doom (1984)', 'American President, The (1995)', 'Cocoon (1985)', 'Born Yesterday (1950)', 'Mystery Men (1999)', 'Dave (1993)', "She's All That (1999)", 'Ref, The (1994)', 'My Cousin Vinny (1992)', 'American Pie (1999)', 'Risky Business (1983)', "You've Got Mail (1998)", 'Addams Family Values (1993)', 'Mod Squad, The (1999)', 'Who Framed Roger Rabbit? (1988)', 'B*A*P*S (1997)', 'Inspector Gadget (1999)', 'Life Is Beautiful (La Vita √® bella) (1997)', 'Toy Story (1995)', 'Mission to Mars (2000)', 'Friday (1995)', 'Odd Couple, The (1968)')
+
+
+
+y_data4= c("Lethal Weapon (1987)", 'Toy Story 2 (1999)', 'Black Hawk Down (2001)', 'Contact (1997)', '3000 Miles to Graceland (2001)', 'Beautiful Mind, A (2001)', 'Titanic (1997)', 'Silence of the Lambs, The (1991)', 'Leaving Las Vegas (1995)', 'Scent of a Woman (1992)', 'Green Mile, The (1999)', 'Sixth Sense, The (1999)', 'Good Will Hunting (1997)', "Coal Miner's Daughter (1980)", 'Rain Man (1988)', 'Mary Poppins (1964)', 'Wizard of Oz, The (1939)', 'Traffic (2000)', 'Fugitive, The (1993)', 'Gandhi (1982)', 'Natural, The (1984)', 'Apollo 13 (1995)', 'Color Purple, The (1985)', 'JFK (1991)', 'Field of Dreams (1989)', 'Bringing Out the Dead (1999)', 'Driving Miss Daisy (1989)', 'My Life (1993)', 'Goodfellas (1990)', 'Texas Chainsaw Massacre, The (1974)', 'Thirteen Days (2000)', 'Breakfast Club, The (1985)', 'Full Metal Jacket (1987)', 'Pinocchio (1940)', "I'm Gonna Git You Sucka (1988)", 'Searching for Bobby Fischer (1993)', 'Matrix, The (1999)', 'Max Dugan Returns (1983)', 'Star Wars: Episode IV - A New Hope (1977)', 'Peter Pan (1953)', 'Reservoir Dogs (1992)', 'Father of the Bride (1950)', 'Exorcist, The (1973)', 'Pulp Fiction (1994)', 'Back to the Future (1985)', 'Few Good Men, A (1992)', 'L.A. Confidential (1997)', 'Cinderella (1950)', 'Rocky (1976)', 'Pitch Black (2000)')
+
+y_data5=c('Ransom (1996)', 'Natural, The (1984)', 'Stop! Or My Mom Will Shoot (1992)', 'Free Willy (1993)', 'Fast Times at Ridgemont High (1982)', 'Flashdance (1983)', 'Popeye (1980)', 'Adventures in Babysitting (1987)', 'Bloodsport (1988)', 'Falling Down (1993)', 'Die Hard (1988)', 'Goonies, The (1985)', 'Aces: Iron Eagle III (1992)', 'Rocky (1976)', 'Armageddon (1998)', '12 Angry Men (1957)', 'Dirty Dancing (1987)', 'American Beauty (1999)', 'Extreme Measures (1996)', 'Lethal Weapon 2 (1989)', 'Raising Arizona (1987)', 'Sound of Music, The (1965)', 'Hoop Dreams (1994)', 'Caddyshack (1980)', 'Varsity Blues (1999)', 'EDtv (1999)', 'Back to the Future (1985)', 'Lethal Weapon (1987)', 'Gattaca (1997)', 'True Lies (1994)', 'Die Hard 2 (1990)', 'Liar Liar (1997)', 'Fierce Creatures (1997)', 'Substitute, The (1996)', 'Dead Again (1991)', 'Great Muppet Caper, The (1981)', 'Fletch (1985)', 'When Harry Met Sally... (1989)', 'Babe (1995)', 'Mrs. Doubtfire (1993)', 'Godfather: Part III, The (1990)', 'Splash (1984)', 'Guys and Dolls (1955)', 'Mr. Smith Goes to Washington (1939)', 'Heat (1995)', 'Mask of Zorro, The (1998)', 'American Tail, An (1986)', 'Hoosiers (a.k.a. Best Shot) (1986)', 'Glory (1989)', 'Pink Floyd: The Wall (1982)', 'One Fine Day (1996)', 'Pelican Brief, The (1993)', 'Batman (1989)', 'Disclosure (1994)', 'Lethal Weapon 3 (1992)', 'Babe: Pig in the City (1998)', 'Little Shop of Horrors, The (1960)', 'Groundhog Day (1993)', 'West Side Story (1961)', 'One Crazy Summer (1986)', 'Fearless (1993)', 'Seven (a.k.a. Se7en) (1995)', 'Weird Science (1985)', 'Romancing the Stone (1984)', 'So I Married an Axe Murderer (1993)', 'Edward Scissorhands (1990)', 'Fan, The (1996)', 'Daylight (1996)', 'Fantasia (1940)', 'Amadeus (1984)', 'Fargo (1996)', 'Labyrinth (1986)', "Bug's Life, A (1998)", 'Dragonheart (1996)', 'Muppet Movie, The (1979)', 'Space Jam (1996)', 'Beavis and Butt-Head Do America (1996)', 'Batman Returns (1992)', 'Red Corner (1997)', 'Bowfinger (1999)', 'Bodyguard, The (1992)', 'Dying Young (1991)', 'Mis√©rables, Les (1998)', 'Big (1988)', 'Lethal Weapon 4 (1998)', 'Life Is Beautiful (La Vita √® bella) (1997)', 'Big Lebowski, The (1998)', 'Baby... Secret of the Lost Legend (1985)', 'Good Will Hunting (1997)', 'I.Q. (1994)', 'Godfather: Part II, The (1974)', 'Fish Called Wanda, A (1988)', 'Up Close and Personal (1996)', 'Meatballs 4 (1992)', 'Die Hard: With a Vengeance (1995)', 'Stripes (1981)', 'Client, The (1994)', 'Independence Day (a.k.a. ID4) (1996)', 'RoboCop (1987)', 'Rising Sun (1993)', 'Days of Thunder (1990)', 'Total Recall (1990)', "You've Got Mail (1998)", 'Brighton Beach Memoirs (1986)', 'Dave (1993)', 'Ghost and the Darkness, The (1996)', 'Full Monty, The (1997)', 'Juror, The (1996)', 'Spice World (1997)', 'Jerry Maguire (1996)', "St. Elmo's Fire (1985)", 'Shawshank Redemption, The (1994)', 'King and I, The (1956)', 'Willow (1988)', 'Alien (1979)', 'Stand by Me (1986)', 'Scream (1996)', 'For Love or Money (1993)', 'Wag the Dog (1997)', 'Pacific Heights (1990)', 'Conspiracy Theory (1997)', 'It Could Happen to You (1994)', 'Princess Bride, The (1987)', 'Full Metal Jacket (1987)')
+
+y_data6=c('Dead Man Walking (1995)', 'Broken Arrow (1996)', 'Happy Gilmore (1996)', "Mr. Holland's Opus (1995)", 'Twister (1996)', 'Daylight (1996)', 'Cable Guy, The (1996)', 'Eraser (1996)', 'Nutty Professor, The (1996)', 'Time to Kill, A (1996)', 'River Wild, The (1994)', 'Executive Decision (1996)', 'Phenomenon (1996)', 'Father of the Bride Part II (1995)', 'Dragonheart (1996)', 'Willy Wonka & the Chocolate Factory (1971)')
+
+y_data12=c("Concorde: Airport '79, The (1979)", 'Nine to Five (a.k.a. 9 to 5) (1980)', 'Shawshank Redemption, The (1994)', 'Man with Two Brains, The (1983)', 'True Romance (1993)', 'Independence Day (a.k.a. ID4) (1996)', 'Faraway, So Close (In weiter Ferne, so nah!) (1993)', 'Minority Report (2002)', 'Desperately Seeking Susan (1985)', 'Good Will Hunting (1997)', 'Rush (1991)', 'Thomas Crown Affair, The (1968)', 'Peacemaker, The (1997)', 'Moulin Rouge (1952)', 'Alien¬≥ (a.k.a. Alien 3) (1992)', 'Black Hole, The (1979)', "Everybody's All-American (1988)", 'Ransom (1996)', 'Xanadu (1980)', 'When Harry Met Sally... (1989)', 'Popeye (1980)', 'Sphere (1998)', 'Picnic at Hanging Rock (1975)', 'Enemy of the State (1998)', 'Victor/Victoria (1982)', 'Apollo 13 (1995)', 'Working Girl (1988)', 'Citizen Kane (1941)', 'Blazing Saddles (1974)', 'Corky Romano (2001)', 'Mission to Mars (2000)', 'Kiss of the Spider Woman (1985)', 'Donnie Darko (2001)', 'Little Voice (1998)', "Don't Tell Mom the Babysitter's Dead (1991)", "Bill & Ted's Excellent Adventure (1989)", 'Austin Powers: The Spy Who Shagged Me (1999)', 'Pretty Woman (1990)', 'Lord of the Rings: The Two Towers, The (2002)', 'Deuce Bigalow: Male Gigolo (1999)', 'Eating Raoul (1982)', 'Pulp Fiction (1994)', "Rosemary's Baby (1968)", 'Lost in Translation (2003)', 'Total Recall (1990)', 'Day of the Triffids, The (1962)', "Bill & Ted's Bogus Journey (1991)", 'Forrest Gump (1994)', 'Mission: Impossible (1996)', 'So I Married an Axe Murderer (1993)', 'Galaxy Quest (1999)', 'Miss Congeniality (2000)', 'Children of the Damned (1963)', 'Beavis and Butt-Head Do America (1996)', 'Naked Gun 33 1/3: The Final Insult (1994)', 'Welcome to the Dollhouse (1995)', 'Batman (1989)', 'Leaving Las Vegas (1995)', 'Blair Witch Project, The (1999)', 'Big Lebowski, The (1998)', 'Starman (1984)', 'Mulholland Drive (2001)', 'L.A. Confidential (1997)', 'Breakfast Club, The (1985)', 'Erin Brockovich (2000)', 'Goodfellas (1990)', 'Twelve Monkeys (a.k.a. 12 Monkeys) (1995)')
+
+```
+
+
+```{r}
+
+common_items_x <- intersect(movie_list_fil,x_data4)
+recommendations <- recommended_movies(common_items_x, rating_matrix, rec_model, top_n = 3)
+print(recommendations)
+common_items_x2 <- intersect(recommendations, y_data4)
+common_items_y2 <- intersect(recommendations, common_items_x)
+c1=length(common_items_x2)
+c2=length(common_items_y2)
+score4=(c1-c2)/3
+score4
+
+```
+
+
+```{r}
+final_score=mean(scores)
+```
+
+
+```{r}
+print(final_score)
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+
+
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
