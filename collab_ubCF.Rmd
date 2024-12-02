@@ -250,29 +250,95 @@ library(recommenderlab)
 library(bslib) 
 library(shinythemes)
 library(tidyr)
+library(ggplot2)
 
 # Define UI
 ui <- fluidPage(
-  titlePanel("Movie Recommendation System"),
+  tags$head(
+    tags$style(HTML("
+      body {
+        background-image: url('https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?fm=jpg&q=60&w=3000&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8bW92aWUlMjBwb3N0ZXJ8ZW58MHx8MHx8fDA%3D'); 
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        color: #FFFFFF;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+      }
+      h3 {
+        color: #E50914;
+        margin-bottom: 20px;
+      }
+      .title {
+        text-align: center;
+        color: #E50914;
+        font-size: 50px;
+        font-weight: bold;
+      }
+      .sidebar {
+        background-color: #1C1C1C;
+        border-radius: 10px;
+        padding: 20px;
+      }
+      .sidebar input, .sidebar select, .sidebar button {
+        background-color: #333333;
+        color: #FFFFFF;
+        border: none;
+        border-radius: 5px;
+        margin-bottom: 10px;
+      }
+      .sidebar button:hover {
+        background-color: #E50914;
+        color: #FFFFFF;
+        transition: 0.3s;
+      }
+      .main-panel {
+        padding: 20px;
+        border-radius: 10px;
+        background-color: #1C1C1C;
+      }
+      .main-panel table {
+        width: 100%;
+        margin-top: 10px;
+        background-color: #333333;
+        color: #FFFFFF;
+        border-collapse: collapse;
+      }
+      .main-panel table th, .main-panel table td {
+        padding: 10px;
+        border: 1px solid #555555;
+      }
+      .main-panel .plot {
+        margin-top: 20px;
+      }
+    "))
+  ),
+  
+  titlePanel(
+    div("Movie Recommendation System", class = "title")
+  ),
   
   sidebarLayout(
     sidebarPanel(
-      h3("Select Movies"),
-      selectInput(
-        inputId = "selected_movies",
-        label = "Choose movies you like (multiple selections allowed):",
-        choices = movie_list_fil, # This should be the list of movies from your data
-        selected = NULL,
-        multiple = TRUE
-      ),
-      actionButton("recommend_btn", "Get Recommendations")
+      div(class = "sidebar",
+          h3("Select Movies"),
+          selectInput(
+            inputId = "selected_movies",
+            label = "Choose movies you like (multiple selections allowed):",
+            choices = movie_list_fil, # This should be the list of movies from your data
+            selected = NULL,
+            multiple = TRUE
+          ),
+          actionButton("recommend_btn", "Get Recommendations", class = "btn-recommend")
+      )
     ),
     
     mainPanel(
-      h3("Recommendations"),
-      verbatimTextOutput("recommendations_output"),
-      h3("Score"),
-      verbatimTextOutput("score_output")
+      div(class = "main-panel",
+          h3("Recommendations"),
+          tableOutput("recommendations_table"),
+          h3("Genre Distribution of Recommended Movies"),
+          plotOutput("genre_pie_chart")
+      )
     )
   )
 )
@@ -284,21 +350,49 @@ server <- function(input, output) {
     recommended_movies(input$selected_movies, rating_matrix, rec_model, top_n = 3)
   })
   
-  score <- eventReactive(input$recommend_btn, {
-    req(input$selected_movies)
-    common_items_1 <- intersect(recommendations(), y_data)
-    common_items_2 <- intersect(recommendations(), common_items_12)
-    (length(common_items_1) - length(common_items_2)) / 3
-  })
-  
-  output$recommendations_output <- renderText({
+  genre_data <- eventReactive(input$recommend_btn, {
     req(recommendations())
-    paste("Top 3 Recommendations: ", paste(recommendations(), collapse = ", "))
+    
+    recommended_genres <- movies %>%
+      filter(title %in% recommendations()) %>%
+      head(3) %>%
+      select(genres)
+    
+    genre_list <- strsplit(recommended_genres$genres, "\\|")
+    genre_flat <- unlist(genre_list)
+    
+    genre_counts <- as.data.frame(table(genre_flat))
+    colnames(genre_counts) <- c("Genre", "Count")
+    
+    genre_counts$Percentage <- round(genre_counts$Count / sum(genre_counts$Count) * 100, 2)
+    genre_counts
   })
   
-  output$score_output <- renderText({
-    req(score())
-    paste("Recommendation Score: ", round(score(), 4))
+  output$recommendations_table <- renderTable({
+    req(recommendations())
+    
+    recommended_movies_with_genres <- movies %>%
+      filter(title %in% recommendations()) %>%
+      head(3) %>%
+      select(title, genres)
+    
+    colnames(recommended_movies_with_genres) <- c("Movie Title", "Genres")
+    recommended_movies_with_genres
+  })
+  
+  output$genre_pie_chart <- renderPlot({
+    req(genre_data())
+    ggplot(genre_data(), aes(x = "", y = Count, fill = Genre)) +
+      geom_bar(stat = "identity", width = 1) +
+      coord_polar(theta = "y") +
+      theme_void() +
+      ggtitle("Genres of Top 3 Recommended Movies") +
+      geom_text(
+        aes(label = paste0(Percentage, "%")), 
+        position = position_stack(vjust = 0.5), 
+        size = 4
+      ) +
+      theme(plot.title = element_text(hjust = 0.5))
   })
 }
 
